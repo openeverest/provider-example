@@ -1,15 +1,32 @@
-# Component type version catalog.
-# Add new versions here when operator releases are available.
-# Mark exactly one version per type as `default: true`.
+# Two related catalogs.
 #
-# Run `provider-sdk add component` to populate this file automatically.
+# `componentTypes` is the source of truth for which versions of each component
+# type exist and which container image implements each one. Exactly one version
+# per type is the default.
 #
-# Example:
-# componentTypes:
-#   mongod:
-#     versions:
-#     - version: "1.0.0"
-#       image: example/my-database:1.0.0
-#       default: true
+# `versions` are bundles: curated sets of component versions known to work
+# together. Users pick one bundle through the Instance's `spec.version` instead
+# of pinning a version on every component. The runtime resolves the bundle
+# before it calls Sync(), so provider code always sees a concrete version on
+# each component and never has to know bundles exist.
+#
+# `provider-sdk generate` fails the build if a bundle references a component or
+# a version that does not exist here.
 
-componentTypes: {}
+componentTypes:
+  memcached:
+    versions:
+      - version: "1.6.38"
+        image: memcached:1.6.38-alpine
+        default: true
+      - version: "1.6.31"
+        image: memcached:1.6.31-alpine
+
+versions:
+  - name: "1.6.38"
+    default: true
+    components:
+      engine: "1.6.38"
+  - name: "1.6.31"
+    components:
+      engine: "1.6.31"

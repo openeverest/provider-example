@@ -1,0 +1,126 @@
+# The `pool` topology: one or more independent memcached nodes that clients
+# hash keys across.
+#
+# A topology is a deployment architecture — a distinct set of components, or a
+# materially different way of wiring them together. memcached has one, so this
+# provider declares one.
+
+config:
+  components:
+    engine:
+      defaults:
+        replicas: 1
+
+ui:
+  sections:
+    basicInfo:
+      label: Basic information
+      description: Choose the memcached version to run.
+      components:
+        version:
+          uiType: select
+          path: spec.version
+          fieldParams:
+            label: Version
+            optionsPath: spec.versions
+            optionsPathConfig:
+              labelPath: name
+              valuePath: name
+            modes:
+              edit:
+                disabled: true
+          validation:
+            required: true
+    resources:
+      label: Resources
+      description: Configure the size of the pool and the resources each node has access to.
+      components:
+        numberOfNodes:
+          uiType: number
+          path: spec.components.engine.replicas
+          fieldParams:
+            label: Number of nodes
+            defaultValue: 1
+            step: 1
+          validation:
+            required: true
+            int: true
+            min: 1
+            max: 9
+            modes:
+              edit:
+                celExpressions:
+                  # Removing a node rehashes part of the keyspace, so warn on
+                  # the way down rather than silently accepting it.
+                  - celExpr: spec.components.engine.replicas >= original.spec.components.engine.replicas
+                    message: Nodes cannot be removed from a running pool; create a new instance instead.
+        resources:
+          uiType: group
+          groupType: line
+          components:
+            cpu:
+              uiType: number
+              path: spec.components.engine.resources.limits.cpu
+              fieldParams:
+                label: CPU
+                defaultValue: 1
+                step: 0.1
+                badge: cores
+              validation:
+                required: true
+                min: 0.1
+            memory:
+              uiType: number
+              path: spec.components.engine.resources.limits.memory
+              fieldParams:
+                label: Memory per node
+                defaultValue: 1
+                step: 0.5
+                badge: Gi
+                badgeToApi: true
+              validation:
+                required: true
+                min: 0.1
+          componentsOrder:
+            - cpu
+            - memory
+      componentsOrder:
+        - numberOfNodes
+        - resources
+    advanced:
+      label: Advanced configuration
+      description: Tune the memcached process itself.
+      components:
+        engineTuning:
+          uiType: group
+          groupType: accordion
+          label: Engine tuning
+          description: Maps directly onto memcached command-line flags.
+          components:
+            maxConnections:
+              uiType: number
+              path: spec.components.engine.parameters.maxConnections
+              fieldParams:
+                label: Max connections
+                defaultValue: 1024
+              validation:
+                int: true
+                min: 1
+                max: 65535
+            threads:
+              uiType: number
+              path: spec.components.engine.parameters.threads
+              fieldParams:
+                label: Worker threads
+                defaultValue: 4
+              validation:
+                int: true
+                min: 1
+                max: 64
+          componentsOrder:
+            - maxConnections
+            - threads
+  sectionsOrder:
+    - basicInfo
+    - resources
+    - advanced

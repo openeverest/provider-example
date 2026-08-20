@@ -1,14 +1,13 @@
-# Minimal Instance CR — smallest viable configuration.
+# The smallest Instance this provider accepts: a single memcached node.
+#
+# Everything else is defaulted — the version comes from the default bundle in
+# definition/versions.yaml, and the topology from the only one on offer.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: my-database-simple
+  name: cache
 spec:
   providerRef:
-    name: provider-example
+    name: example
   components:
-    engine:
-      type: 
-      replicas: 1
-      storage:
-        size: 10Gi
+    engine: {}

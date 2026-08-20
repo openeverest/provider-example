@@ -1,0 +1,16 @@
+# The new node joins and the Instance settles back on Ready.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cache
+spec:
+  replicas: 3
+status:
+  readyReplicas: 3
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: cache
+status:
+  phase: Ready

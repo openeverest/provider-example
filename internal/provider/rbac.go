@@ -13,18 +13,20 @@ package provider
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // =============================================================================
-// PROVIDER-SPECIFIC RBAC — Add markers for your operator's resources.
+// PROVIDER-SPECIFIC RBAC
 // =============================================================================
-// Examples:
-//
-//   - Watch/manage operator CRs:
-//   // +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>,verbs=get;list;watch;create;update;patch;delete
-//   // +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>/status,verbs=get
-//   // +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>/finalizers,verbs=update
-//
-//   - Access Kubernetes core resources:
-//   // +kubebuilder:rbac:groups="",resources=secrets;configmaps,verbs=get;list;watch
-//   // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-//
-//   - Access PVCs (if managing storage):
-//   // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// A provider backed by an operator would grant itself access to that
+// operator's CRs here. This one manages the workload directly, so it needs the
+// built-in resources it creates, plus read access to the pods behind them.
+
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+
+// Secrets are not optional, even though this provider never touches one: the
+// runtime writes the connection details returned by Status() into a Secret
+// through the manager's cached client. Without this the Secret informer never
+// syncs, and every reconcile that reports Ready fails before it can publish
+// the phase.
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
