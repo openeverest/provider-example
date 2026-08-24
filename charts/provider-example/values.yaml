@@ -116,8 +116,9 @@ tolerations: []
 affinity: {}
 
 provider:
-  # -- The name to register for the Provider custom resource
-  name: provider-example
+  # -- The name to register for the Provider custom resource.
+  # Must match `name` in definition/provider.yaml and common.ProviderName.
+  name: example
   # -- Short identifier for the provider, used in resource names
   # This appears in preset names (e.g., '<shortName>-replicaset') and can be
   # used in other contexts where a short concise provider identifier is needed.

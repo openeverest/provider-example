@@ -164,13 +164,9 @@ install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cl
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backups.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_restores.yaml
 	kubectl apply -f https://raw.githubusercontent.com/openeverest/openeverest/$(OPENEVEREST_BRANCH)/config/crd/bases/backup.openeverest.io_backupstorages.yaml
-	# TODO: install your operator's CRDs, e.g.:
-	# curl -fsSL https://raw.githubusercontent.com/<org>/<operator>/v$(OPERATOR_VERSION)/deploy/crd.yaml | kubectl apply --server-side -f -
 
 .PHONY: deploy-provider-ci
 deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
-	# TODO: if your chart pulls dependencies from external repos, add them first:
-	# helm repo add <repo-name> <repo-url>
 	helm upgrade --install provider-example $(CHART_DIR) \
 		--create-namespace \
 		--namespace provider-system \
@@ -178,9 +174,6 @@ deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must a
 		--set image.tag=$(_IMG_TAG) \
 		--set image.pullPolicy=Never \
 		--wait --timeout 2m
-	# TODO: if your chart bundles the DB operator as a subchart, scale it to 0
-	# (e.g. --set operator.replicaCount=0) — integration tests simulate the
-	# operator by patching CR statuses directly.
 
 ##@ Local Development Cluster
 

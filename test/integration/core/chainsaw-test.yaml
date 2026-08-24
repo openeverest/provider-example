@@ -1,28 +1,24 @@
 ---
-# Core lifecycle suite — skeleton.
+# Lifecycle of an Instance, end to end.
 #
-# Ships with a single step that verifies the provider deployment is running.
-# The commented-out steps below show the recommended lifecycle test pattern;
-# enable and adapt them once your provider implements Sync/Status.
-#
-# For a complete example, see:
-# https://github.com/openeverest/provider-percona-server-mongodb/tree/main/test/integration/core
+# Unlike an operator-backed provider, nothing here is simulated: memcached
+# really starts, the readiness probe really passes, and the Instance really
+# reaches Ready. That is the upside of a provider that owns its workload.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
   name: core
 spec:
   description: |
-    Lifecycle of an Instance: create, simulate operator readiness, update,
-    and delete.
+    Create an Instance, wait for it to become Ready, scale the pool out, then
+    delete it and check the workload is garbage collected.
 
   # Collect diagnostics when a step fails.
   catch:
     - script:
         content: kubectl -n $NAMESPACE get instance -o yaml
-    # TODO: also dump your operator-native CR, e.g.:
-    # - script:
-    #     content: kubectl -n $NAMESPACE get <operator-resource> -o yaml
+    - script:
+        content: kubectl -n $NAMESPACE get statefulset,service,pod -o wide
     - podLogs:
         namespace: provider-system
         selector: app.kubernetes.io/name=provider-example
@@ -34,43 +30,39 @@ spec:
         - assert:
             file: 00-assert.yaml
 
-    # TODO: enable once your provider implements Sync().
-    # Applies an Instance and asserts the provider creates the
-    # operator-native CR with the expected spec.
-    # - name: create-instance
-    #   try:
-    #     - apply:
-    #         file: 10-create-instance.yaml
-    #     - assert:
-    #         file: 10-assert.yaml
+    - name: create-instance
+      description: The provider translates the Instance into a StatefulSet and a headless Service.
+      try:
+        - apply:
+            file: 10-create-instance.yaml
+        - assert:
+            file: 10-assert.yaml
 
-    # TODO: enable once your provider implements Status().
-    # The operator is scaled to 0 in integration tests, so simulate it
-    # marking the cluster ready by patching the operator-native CR status,
-    # then assert the Instance reports phase Running.
-    # - name: instance-ready
-    #   try:
-    #     - script:
-    #         content: |
-    #           kubectl patch <operator-resource>/test-instance --subresource status -n $NAMESPACE \
-    #             -p '{"status":{"state":"ready"}}' --type=merge
-    #     - assert:
-    #         file: 11-assert.yaml
+    - name: instance-ready
+      description: Once every node passes its readiness probe the Instance reports Ready.
+      try:
+        - assert:
+            timeout: 180s
+            file: 11-assert.yaml
 
-    # TODO: enable once your provider implements Cleanup().
-    # Deletes the Instance and waits for the provider to tear everything
-    # down. With the operator scaled to 0, you may need to clear finalizers
-    # on the operator-native CR (nothing processes them):
-    # - name: delete-instance
-    #   try:
-    #     - script:
-    #         content: |
-    #           kubectl -n $NAMESPACE delete instance/test-instance --wait=false
-    #           kubectl -n $NAMESPACE patch <operator-resource>/test-instance \
-    #             -p '{"metadata":{"finalizers":null}}' --type merge
-    #     - wait:
-    #         apiVersion: core.openeverest.io/v1alpha1
-    #         kind: Instance
-    #         name: test-instance
-    #         for:
-    #           deletion: {}
+    - name: scale-out
+      description: Adding nodes takes the Instance through Updating and back to Ready.
+      try:
+        - apply:
+            file: 20-scale-out.yaml
+        - assert:
+            timeout: 180s
+            file: 20-assert.yaml
+
+    - name: delete-instance
+      description: Owner references garbage collect the workload, which is why Cleanup can be a no-op.
+      try:
+        - delete:
+            ref:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              name: cache
+        - script:
+            content: |
+              kubectl -n $NAMESPACE wait --for=delete statefulset/cache --timeout=120s
+              kubectl -n $NAMESPACE wait --for=delete service/cache --timeout=120s

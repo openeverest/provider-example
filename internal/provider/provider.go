@@ -1,13 +1,25 @@
+// Package provider implements an OpenEverest provider that runs memcached
+// directly on Kubernetes, with no operator in between.
+//
+// Real providers translate an Instance into a custom resource owned by a
+// database operator. This one translates it into a StatefulSet and a headless
+// Service, which keeps every OpenEverest concept visible without the reader
+// having to learn an operator's API first.
+//
+// The four methods below are the whole contract. Each delegates to its own
+// file so the lifecycle stays readable:
+//
+//	Validate → validate.go  reject bad specs before they are persisted
+//	Sync     → sync.go      make the cluster match the spec
+//	Status   → status.go    report what the cluster actually looks like
+//	Cleanup  → this file    tear down anything not garbage collected
 package provider
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-
-	// TODO: Import your operator's API types package, e.g.:
-	// operatorv1 "github.com/example/my-operator/api/v1"
 
 	"github.com/openeverest/provider-example/internal/common"
 )
@@ -15,113 +27,58 @@ import (
 // Compile-time check that Provider implements the required interface.
 var _ controller.ProviderInterface = (*Provider)(nil)
 
-// Provider implements controller.ProviderInterface for the provider-example provider.
+// Provider implements controller.ProviderInterface for memcached.
 type Provider struct {
 	controller.BaseProvider
 }
 
-// New creates a new Provider instance.
+// New creates a new Provider.
 func New() *Provider {
 	return &Provider{
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
-			SchemeFuncs:  []func(*runtime.Scheme) error{
-				// TODO: Register your operator's scheme, e.g.:
-				// operatorv1.SchemeBuilder.AddToScheme,
+			// The runtime's scheme already knows the OpenEverest APIs and
+			// core/v1; anything else a provider touches must be registered
+			// here, including apps/v1.
+			SchemeFuncs: []func(*runtime.Scheme) error{
+				appsv1.AddToScheme,
 			},
+			// Without this watch the Instance would only be reconciled on its
+			// own changes, so Status() would never notice pods becoming ready.
 			WatchConfigs: []controller.WatchConfig{
-				// TODO: Watch your operator's primary resource, e.g.:
-				// controller.WatchOwned(&operatorv1.MyDatabase{}),
+				controller.WatchOwned(&appsv1.StatefulSet{}),
 			},
 		},
 	}
 }
 
-// Validate checks if the Instance spec is valid.
-//
-// Add your provider-specific validation logic here.
-// Return an error if the spec is invalid.
-//
-// +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=<operator-api-group>,resources=<operator-resources>/status,verbs=get
+// Validate rejects Instance specs this provider cannot serve. The API server
+// calls it before persisting an Instance; the reconciler calls it again on
+// every reconcile, which is what catches specs applied straight to Kubernetes.
 func (p *Provider) Validate(c *controller.Context) error {
-	l := log.FromContext(c.Context())
-	l.Info("Validating instance", "name", c.Name())
-
-	// TODO: Implement validation logic.
-	// Examples:
-	//   - Check that required components are present
-	//   - Validate storage sizes, replica counts
-	//   - Ensure version compatibility
-	return nil
+	return validate(c)
 }
 
-// Sync ensures all required resources exist and are configured correctly.
-//
-// This is the main reconciliation logic. Create or update your
-// operator's custom resource(s) based on the Instance spec.
+// Sync makes the cluster match the Instance spec. It runs on every
+// reconciliation and must be idempotent.
 func (p *Provider) Sync(c *controller.Context) error {
-	l := log.FromContext(c.Context())
-	l.Info("Syncing instance", "name", c.Name())
-
-	// TODO: Implement sync logic.
-	// Typical pattern:
-	//   1. Build the operator CR spec from the Instance spec
-	//   2. Use c.Apply() to create/update the operator resource
-	//
-	// Example:
-	//   cr := &operatorv1.MyDatabase{
-	//       ObjectMeta: metav1.ObjectMeta{
-	//           Name:      c.Name(),
-	//           Namespace: c.Namespace(),
-	//       },
-	//       Spec: buildSpec(c),
-	//   }
-	//   return c.Apply(cr)
-	return nil
+	return sync(c)
 }
 
-// Status computes the current status of the database instance.
-//
-// Query the operator's resource(s) and translate their status
-// into the provider-runtime's Status type.
+// Status reports the observed state of the workload back to the Instance.
 func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
-	l := log.FromContext(c.Context())
-	l.Info("Computing status", "name", c.Name())
-
-	// TODO: Implement status logic.
-	// Typical pattern:
-	//   1. Get the operator CR using c.Get()
-	//   2. Translate its status to a controller.Status
-	//
-	// Example:
-	//   cr := &operatorv1.MyDatabase{}
-	//   if err := c.Get(cr, c.Name()); err != nil {
-	//       return controller.Status{}, err
-	//   }
-	//   if cr.Status.Ready {
-	//       return controller.ReadyWithConnectionDetails(
-	//           controller.ConnectionDetails{
-	//           // Populate connection details.
-	//           },
-	//       ), nil
-	//   }
-	//   return controller.Provisioning("waiting for database to be ready"), nil
-
-	return controller.Provisioning("initializing"), nil
+	return status(c)
 }
 
-// Cleanup handles deletion of provider-managed resources.
+// Cleanup runs when an Instance is deleted, before the runtime drops its
+// finalizer.
 //
-// Called when the Instance has a deletion timestamp set.
-// Delete any resources that are not automatically cleaned up
-// via owner references.
-func (p *Provider) Cleanup(c *controller.Context) error {
-	l := log.FromContext(c.Context())
-	l.Info("Cleaning up instance", "name", c.Name())
-
-	// TODO: Implement cleanup logic if needed.
-	// Resources with owner references set via c.Apply() are automatically
-	// garbage collected. Only implement this if you need custom cleanup.
+// There is nothing to do here: every object this provider creates goes through
+// Context.Apply, which sets a controller reference back to the Instance, so
+// Kubernetes garbage collects them. Implement this method when a provider
+// creates something outside the Instance's ownership graph — a cluster-scoped
+// object, or a resource in another namespace — or when teardown has to be
+// waited on, in which case return controller.WaitFor to be reconciled again.
+func (p *Provider) Cleanup(_ *controller.Context) error {
 	return nil
 }

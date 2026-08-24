@@ -1,9 +1,8 @@
-# Expected outcome of the instance-ready step: once the operator-native CR
-# reports ready, the provider's Status() must surface phase Running on the
-# Instance.
+# Every node passes its readiness probe, so Status() reports Ready and the
+# runtime publishes the connection Secret.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: test-instance
+  name: cache
 status:
-  phase: Running
+  phase: Ready

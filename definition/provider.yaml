@@ -1,20 +1,21 @@
 # Provider identity and component definitions.
-# Component types define what software each component runs (e.g. mongod, backup).
-# Component names are the logical roles used in topologies (e.g. engine, proxy).
 #
-# Run `provider-sdk add component` to add components interactively.
-# For more details, see github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md.
-
-name: provider-example
-
-# Components map logical component names to their type.
-# The type must match a key in versions.yaml's componentTypes.
-# Add parametersSchema to reference a Go type from components/types.go
-# when a component accepts parameters.
+# `name` is the name of the Provider CR this repository ships. Instances select
+# it through `spec.providerRef.name`, and the provider binary uses it to look
+# its own Provider CR up at runtime — so it must match common.ProviderName in
+# internal/common/spec.go.
 #
-# Example:
-#   engine:
-#     type: mongod
-#   backup:
-#     type: pbm
-components: {}
+# Components are logical *roles* ("engine", "proxy", "configServer").
+# Component *types* are the software a role runs ("memcached"). Several
+# components may share one type; this provider has a single component.
+
+name: example
+
+components:
+  engine:
+    type: memcached
+    # Provider-specific fields this component accepts on top of the ones every
+    # component has (version, image, replicas, resources, storage). Resolved
+    # into an OpenAPI schema at generate time from the Go type of the same name
+    # in definition/components/types.go.
+    parametersSchema: MemcachedParameters

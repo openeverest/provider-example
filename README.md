@@ -1,262 +1,156 @@
 # provider-example
 
-<!-- TODO(provider): replace the heading with the product name (e.g. "Percona Server for MongoDB
-Provider", "KubeAI Provider"). -->
-
 > [!WARNING]
-> **Pre-alpha.** OpenEverest v2 and this provider are under active development. CRD schemas,
-> chart values and defaults change frequently, including in breaking ways, and there is no
-> supported upgrade path between versions yet. Not for production use.
+> **Pre-alpha.** OpenEverest v2 is under active development. CRD schemas, chart values and
+> defaults change frequently, including in breaking ways.
 
-<!-- TODO(sdk): remove the pre-alpha banner and the status badge at v2 GA. -->
-
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange)](https://github.com/openeverest/openeverest)
 [![CI](https://github.com/openeverest/provider-example/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/openeverest/provider-example/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/release/openeverest/provider-example)](https://github.com/openeverest/provider-example/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/openeverest/provider-example.svg)](https://pkg.go.dev/github.com/openeverest/provider-example)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-<!-- TODO(provider): one sentence — what this runs, and on top of which operator. -->
-Run **`<technology>`** on Kubernetes through [OpenEverest](https://github.com/openeverest/openeverest),
-backed by the [`<operator>`](https://example.com/operator).
+The smallest complete [OpenEverest](https://github.com/openeverest/openeverest) provider —
+written to be read.
 
 ## What this is
 
-OpenEverest providers translate a single, technology-agnostic `Instance` custom resource into
-the native custom resources of an upstream Kubernetes operator — for databases, but equally
-for caches, message queues, object storage, or model-serving runtimes. This repository is the
-provider for `<technology>`: it owns the technology-specific knowledge — topologies, versions,
-parameters, backup wiring — so that users, the API server, and the UI stay technology-agnostic.
+Every other provider in the OpenEverest organization translates an `Instance` into the custom
+resources of a database operator. To follow one, you have to learn that operator's API first,
+which is a lot of ceremony in the way of the ten decisions that are actually about OpenEverest.
 
-> [!IMPORTANT]
-> **This provider is not standalone.** It requires an OpenEverest installation (core CRDs and
-> controller) in the cluster. Installing this chart on its own does nothing.
-> See [Install OpenEverest](https://openeverest.io/documentation/current/quick-install.html).
+This provider skips the operator. It manages a **memcached** deployment directly — a
+StatefulSet and a headless Service, and nothing else — so that the provider contract is the
+only thing left on screen.
 
 ```mermaid
 flowchart LR
     U([User / API / UI]) -->|creates| I["Instance<br/>core.openeverest.io"]
     I --> P["provider-example<br/>(this repository)"]
-    P -->|reconciles into| O["Operator CR<br/><operator-api-group>"]
-    O --> W["Upstream operator"]
-    W --> R[("Workloads, Services,<br/>Secrets, PVCs")]
-    P -->|status, endpoints,<br/>credentials| I
+    P -->|creates| R[("StatefulSet<br/>headless Service")]
+    P -->|phase, connection details| I
 ```
 
-The provider watches `Instance` resources whose `spec.providerRef.name` is
-`provider-example`, and reports workload health back onto `Instance.status`. It never
-manages pods directly — all lifecycle work is delegated to the operator.
+memcached earns its place here: it is a real server you can talk to, it starts in under a
+second, its command-line flags map cleanly onto component parameters, and its nodes are
+independent — clients shard keys across them — so scaling out is honest without any
+replication machinery.
 
-## Compatibility
+> [!IMPORTANT]
+> **Not a product.** This provider is a teaching artifact. No image and no chart are
+> published, and memcached has no authentication or persistence. Do not run it in production.
 
-<!-- TODO(provider): keep this table accurate for every release. -->
+## What it demonstrates
 
-| provider-example | OpenEverest | Operator | Kubernetes |
-|---|---|---|---|
-| `0.1.x` | `>= 2.0.0` | `x.y.z` | `1.30` – `1.34` |
+| Concept | Where to look |
+|---|---|
+| Provider identity, components and component types | [definition/provider.yaml](definition/provider.yaml) |
+| Version catalog and version bundles | [definition/versions.yaml](definition/versions.yaml) |
+| Component parameters | [definition/components/types.go](definition/components/types.go) |
+| Topology structure and the UI form schema | [definition/topologies/pool/topology.yaml](definition/topologies/pool/topology.yaml) |
+| Rejecting bad specs at admission time | [internal/provider/validate.go](internal/provider/validate.go) |
+| Turning a spec into Kubernetes objects | [internal/provider/sync.go](internal/provider/sync.go) |
+| Mapping workload state onto Instance phases | [internal/provider/status.go](internal/provider/status.go) |
+| Why `Cleanup` is empty | [internal/provider/provider.go](internal/provider/provider.go) |
+| RBAC markers → generated `ClusterRole` | [internal/provider/rbac.go](internal/provider/rbac.go) |
+| An end-to-end lifecycle test | [test/integration/core/](test/integration/core/) |
 
-## Capabilities
+It leaves out backups, persistent storage and credentials, so that what remains is only the
+provider contract.
 
-<!-- TODO(provider): the rows below are the standard set across all OpenEverest providers.
-     Keep the wording of the rows you use identical so providers stay comparable, and delete
-     the rows that make no sense for this technology rather than marking them unsupported. -->
-
-What you can do to a running instance through the `Instance` API. Upgrading the
-provider itself is covered under [Installation](#installation).
-
-| Capability | Status | Notes |
-|---|---|---|
-| Provisioning | ❌ | |
-| Horizontal scaling | ❌ | |
-| Vertical scaling (CPU / memory) | ❌ | |
-| Version upgrades | ❌ | |
-| Custom configuration | ❌ | |
-| Monitoring | ❌ | |
-| TLS | ❌ | |
-
-Stateful workloads additionally report:
-
-| Capability | Status | Notes |
-|---|---|---|
-| Persistent storage | ❌ | |
-| Storage expansion | ❌ | |
-| Backups (on demand) | ❌ | |
-| Backups (scheduled) | ❌ | |
-| Point-in-time recovery | ❌ | |
-| Restore | ❌ | |
-
-## Installation
-
-<!-- TODO(provider): confirm the published chart coordinates (org/repo) match where you publish. -->
-
-The provider chart is published as an OCI artifact:
+## Run it
 
 ```bash
-helm install provider-example \
-  oci://ghcr.io/openeverest/charts/provider-example \
-  --version <chart-version> \
-  --namespace everest-system
+make dev-up                              # k3d cluster + OpenEverest core + this provider, via Tilt
+kubectl apply -f examples/instance-simple.yaml
+kubectl get instance cache -w
 ```
 
-<!-- TODO(provider): keep whichever of the two bullets below is true, delete the other. -->
-- The operator is bundled as a chart dependency and is installed automatically.
-- The operator is **not** bundled — install it before installing this provider.
-
-Upgrade and uninstall:
+The Instance walks `Provisioning` → `Initializing` → `Ready`. Once it is ready:
 
 ```bash
-helm upgrade provider-example oci://ghcr.io/openeverest/charts/provider-example
-helm uninstall provider-example --namespace everest-system
+kubectl get secret cache-conn -o jsonpath='{.data.uri}' | base64 -d
+kubectl run probe --rm -i --restart=Never --image=busybox --quiet -- \
+  sh -c 'printf "stats settings\r\n" | nc cache 11211 | grep -E "maxbytes|maxconns|num_threads"'
 ```
 
-Uninstalling the chart does **not** delete running `Instance` resources or their data.
-
-## Usage
-
-Verify that the provider registered itself:
+The `maxconns` and `num_threads` in that output are the component parameters from the Instance,
+and `maxbytes` is derived from its memory limit. Then try the pool:
 
 ```bash
-kubectl get providers.core.openeverest.io provider-example
+kubectl apply -f examples/instance-example.yaml
 ```
 
-Create an instance:
+[dev/README.md](dev/README.md) covers running against an existing cluster and every
+`dev/.env` setting.
 
-```yaml
-apiVersion: core.openeverest.io/v1alpha1
-kind: Instance
-metadata:
-  name: my-instance
-spec:
-  providerRef:
-    name: provider-example
-  components:
-    engine:
-      type: 
-      replicas: 3
-      resources:
-        requests:
-          cpu: 500m
-          memory: 2G
-      storage:
-        size: 10Gi
-```
+## Learn it
 
-Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
-`spec.version` and `spec.topology` are optional; the provider defaults apply.
-More examples live in [examples/](examples/).
+The [tutorial](https://github.com/openeverest/provider-sdk/blob/main/TUTORIAL.md) builds this
+repository from an empty scaffold, one concept at a time. Read it alongside the code.
 
-Watch it come up and read the connection details:
-
-```bash
-kubectl get instance my-instance -w
-kubectl get instance my-instance -o jsonpath='{.status.connection}'
-```
-
-Credentials, when the technology has any, are in the secret named by
-`.status.connection.credentialsSecretRef`.
+The provider contract itself — `Validate` / `Sync` / `Status` / `Cleanup`, watches, RBAC, code
+generation, backup interfaces — is documented once for all providers in
+[PROVIDER_DEVELOPMENT.md](https://github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md).
 
 ## Topologies
 
-<!-- TODO(sdk): these blocks are hand-maintained until `provider-sdk generate` fills them
-     from definition/. Until then, update them whenever definition/ changes. -->
-
-<!-- BEGIN GENERATED: topologies -->
-| Topology | Default | Description |
+| Topology | Nodes | Description |
 |---|---|---|
-| `` | ✅ | |
-<!-- END GENERATED: topologies -->
+| `pool` | 1–9 | Independent nodes that clients shard keys across. |
+
+One topology, because memcached has one architecture — running more nodes is a replica count,
+not a different way of assembling the system.
 
 ## Versions
 
-<!-- BEGIN GENERATED: versions -->
-| Version bundle | Default |  |
+| Version bundle | Default | Engine image |
 |---|---|---|
-| | | |
-<!-- END GENERATED: versions -->
+| `1.6.38` | ✅ | `memcached:1.6.38-alpine` |
+| `1.6.31` | | `memcached:1.6.31-alpine` |
 
 Source of truth: [definition/versions.yaml](definition/versions.yaml).
 
-<!-- TODO(provider): document the supported upgrade paths (minor only? operator first?). -->
-
-## Configuration
-
-- **Chart values:** [charts/provider-example/values.yaml](charts/provider-example/values.yaml)
-- **Instance parameters:** per-component and per-topology `parameters` schemas, defined under
-  [definition/](definition/) and published on the `Provider` resource
-  (`kubectl get provider provider-example -o yaml`). The API server and the UI validate
-  user input against these schemas.
-
-<!-- TODO(provider): call out the technology-specific knobs worth knowing about. -->
-
 ## Development
 
-Requires Go (see [go.mod](go.mod)), Docker, Helm, kubectl, and a Kubernetes cluster you can
-reach. [dev/README.md](dev/README.md) covers the environment end to end: the recommended
-local k3d setup, running against a cluster you already have, and every `dev/.env` setting.
-
 ```bash
-make dev-up             # local cluster + Tilt dev environment (see dev/README.md)
 make generate           # RBAC, provider spec, Helm chart sync
-make run                # run the provider locally against the cluster
 make test-unit
-make test-integration   # chainsaw suites under test/integration/
-make dev-down
+make test-integration   # chainsaw suites; needs a cluster with the provider deployed
+make verify             # fails when generated files are stale
 ```
 
-`make help` lists every target. `make verify` fails when generated files are stale — run
-`make generate` and commit the result.
-
-The provider contract (`Validate` / `Sync` / `Status` / `Cleanup`), RBAC markers, watches,
-code generation, and the backup/restore interfaces are documented once for all providers in
-[PROVIDER_DEVELOPMENT.md](https://github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md).
+`make help` lists every target.
 
 ### Layout
 
 | Path | Purpose |
 |---|---|
+| `definition/` | Provider identity, components, versions, topologies, UI schema |
+| `internal/provider/` | `ProviderInterface` implementation and RBAC markers |
+| `internal/common/` | Names shared between the definition and the code |
 | `cmd/provider/` | Entry point |
-| `internal/provider/` | `ProviderInterface` implementation, backup interfaces, RBAC markers |
-| `internal/common/` | Component name constants |
-| `definition/` | Provider identity, component types, versions, topologies, backup classes |
 | `charts/provider-example/` | Helm chart (`generated/` is produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
-| `test/integration/` | Chainsaw suites (see its `README.md`) |
-| `test/vars.sh` | Pinned operator and workload versions used by tests |
+| `test/integration/` | Chainsaw suites |
 | `examples/` | Example `Instance` resources |
-| `dev/` | Tilt dev environment, `.env` configuration, k3d cluster config |
-| `.github/workflows/` | CI: lint, build, unit and integration tests, release |
-
-### Testing
-
-- **Unit tests** — `make test-unit`.
-- **Integration tests** — chainsaw suites under `test/integration/`. The scaffolded `core/`
-  suite is a skeleton: it verifies the provider deployment and includes commented-out
-  lifecycle steps to enable as you implement the provider. See
-  [test/integration/README.md](test/integration/README.md).
-- **CI** — `.github/workflows/ci.yaml` runs lint, build, unit tests, generated-file
-  verification, Helm lint, and each integration suite on every pull request.
+| `dev/` | Tilt dev environment, k3d cluster config |
 
 ## Troubleshooting
 
 ```bash
-kubectl logs -n everest-system deploy/provider-example -f
+kubectl logs -n provider-system deploy/provider-example -f
 ```
 
 | Symptom | Where to look |
 |---|---|
-| `Instance` stuck in `Creating` | `kubectl describe instance <name>` conditions, then the provider logs |
+| `Instance` ignored entirely | `spec.providerRef.name` must be `example` |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
-| `Instance` ignored entirely | `spec.providerRef.name` must be `provider-example` |
-| Operator resource created but no pods | Inspect the operator's custom resource status — the failure is upstream |
-
-<!-- TODO(provider): add technology-specific gotchas (sysctl limits, storage class or GPU
-     requirements, node selectors, …). -->
+| `Instance` stuck in `Provisioning` | `kubectl describe instance <name>`, then the provider logs |
+| `Instance` stuck in `Initializing` | `kubectl describe pod cache-0` — usually image pull or scheduling |
 
 ## Contributing
 
-Issues and pull requests are welcome. See
-[PROVIDER_DEVELOPMENT.md](https://github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md)
-and the [OpenEverest Code of Conduct](https://github.com/openeverest/openeverest/blob/main/CODE_OF_CONDUCT.md).
+Issues and pull requests are welcome. See the
+[OpenEverest Code of Conduct](https://github.com/openeverest/openeverest/blob/main/CODE_OF_CONDUCT.md).
+All commits must carry a `Signed-off-by` trailer (`git commit -s`).
 
 ## Security
 
@@ -266,4 +160,4 @@ Please do not open public issues for security reports.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE).

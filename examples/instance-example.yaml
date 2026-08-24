@@ -1,25 +1,34 @@
-# Example Instance CR for the provider-example provider.
-# Apply this to your cluster to create a database instance.
+# A pool of memcached nodes with every knob this provider exposes set
+# explicitly, so it doubles as a reference for what is configurable.
 #
 # Prerequisites:
-#   1. OpenEverest CRDs installed
-#   2. Provider CR applied (provider.yaml)
-#   3. Operator running
-#   4. Provider controller running
+#   1. OpenEverest core installed (CRDs + controller)
+#   2. This provider installed (`make helm-install`), which applies the
+#      Provider CR the Instance below refers to
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: example-instance
+  name: cache-pool
 spec:
   providerRef:
-    name: provider-example
+    name: example
+
+  # A version *bundle* from definition/versions.yaml, not a component version.
+  # The runtime expands it into a concrete version per component.
+  version: "1.6.38"
+
+  topology:
+    type: pool
+
   components:
     engine:
-      type: 
-      replicas: 1
+      replicas: 3
       resources:
         limits:
           cpu: "1"
-          memory: 2G
-      storage:
-        size: 10Gi
+          memory: 1Gi
+      # Component parameters describe the engine process. Its memory budget
+      # comes from the limit above.
+      parameters:
+        maxConnections: 2048
+        threads: 4

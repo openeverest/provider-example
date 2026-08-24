@@ -1,21 +1,37 @@
 # Expected outcome of the create-instance step.
 #
-# Assert both the accepted Instance spec and the operator-native CR the
-# provider must create from it. Chainsaw asserts are partial: only the
-# fields listed here are checked.
-apiVersion: core.openeverest.io/v1alpha1
-kind: Instance
+# Chainsaw asserts are partial: only the fields listed here are checked, so
+# this pins the translation that matters rather than the whole object.
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: test-instance
+  name: cache
+  ownerReferences:
+    - apiVersion: core.openeverest.io/v1alpha1
+      kind: Instance
+      name: cache
+      controller: true
 spec:
-  providerRef:
-    name: provider-example
-# TODO: assert the operator-native CR produced by Sync(), e.g.:
-# ---
-# apiVersion: <operator-api-group>/v1
-# kind: <OperatorKind>
-# metadata:
-#   name: test-instance
-# spec:
-#   replicas: 1
-#   ...
+  serviceName: cache
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: memcached
+          image: memcached:1.6.38-alpine
+          # 128Mi at 80%, plus the two component parameters.
+          args:
+            - --port=11211
+            - --memory-limit=102
+            - --conn-limit=2048
+            - --threads=2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+spec:
+  clusterIP: None
+  ports:
+    - name: memcached
+      port: 11211

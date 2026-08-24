@@ -1,5 +1,4 @@
-# A two-node pool, which exercises the topology branch and the component
-# parameters in a single Instance.
+# Scaling the pool out: the only change is the node count.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
@@ -12,7 +11,7 @@ spec:
     type: pool
   components:
     engine:
-      replicas: 2
+      replicas: 3
       resources:
         limits:
           cpu: 200m
