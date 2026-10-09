@@ -1,12 +1,13 @@
 # Two related catalogs.
 #
 # `componentTypes` is the source of truth for which versions of each component
-# type exist and which container image implements each one. Exactly one version
-# per type is the default.
+# type exist and which container image implements each one. Each type names
+# its default entry through `defaultVersion`.
 #
 # `versions` are bundles: curated sets of component versions known to work
 # together. Users pick one bundle through the Instance's `spec.version` instead
-# of pinning a version on every component. The runtime resolves the bundle
+# of pinning a version on every component; when they omit it, the top-level
+# `defaultVersion` names the bundle to use. The runtime resolves the bundle
 # before it calls Sync(), so provider code always sees a concrete version on
 # each component and never has to know bundles exist.
 #
@@ -15,16 +16,16 @@
 
 componentTypes:
   memcached:
+    defaultVersion: "1.6.38"
     versions:
       - version: "1.6.38"
         image: memcached:1.6.38-alpine
-        default: true
       - version: "1.6.31"
         image: memcached:1.6.31-alpine
 
+defaultVersion: "1.6.38"
 versions:
   - name: "1.6.38"
-    default: true
     components:
       engine: "1.6.38"
   - name: "1.6.31"

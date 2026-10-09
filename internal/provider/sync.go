@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,9 @@ type engineSpec struct {
 	name      string
 	namespace string
 	labels    map[string]string
+	// podLabels go on the pod template: the selector labels plus the labels
+	// the runtime counts into the Instance's status.components.
+	podLabels map[string]string
 
 	image    string
 	replicas int32
@@ -88,9 +92,13 @@ func resolveEngine(c *controller.Context) (*engineSpec, error) {
 		name:      c.Name(),
 		namespace: c.Namespace(),
 		labels:    selectorLabels(c.Name()),
+		podLabels: podLabels(c),
 		image:     image,
 		replicas:  resolveReplicas(component.Replicas),
-		affinity:  component.Affinity,
+	}
+
+	if component.SchedulingPolicy != nil {
+		engine.affinity = component.SchedulingPolicy.Affinity
 	}
 
 	if component.Resources != nil {
@@ -175,6 +183,15 @@ func selectorLabels(instanceName string) map[string]string {
 	}
 }
 
+// podLabels are the pod template labels: the selector labels plus the labels
+// Context.PodLabels hands out, which the runtime counts into the Instance's
+// status.components. Call PodLabels during Sync for every component.
+func podLabels(c *controller.Context) map[string]string {
+	labels := selectorLabels(c.Name())
+	maps.Copy(labels, c.PodLabels(common.ComponentEngine))
+	return labels
+}
+
 // buildService renders the headless Service that gives every node a stable DNS
 // name (<instance>-<ordinal>.<instance>.<namespace>.svc). memcached clients
 // shard keys across nodes themselves, so they need to address each node, not a
@@ -217,7 +234,7 @@ func buildStatefulSet(engine *engineSpec) *appsv1.StatefulSet {
 			Replicas:    ptr.To(engine.replicas),
 			Selector:    &metav1.LabelSelector{MatchLabels: engine.labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: engine.labels},
+				ObjectMeta: metav1.ObjectMeta{Labels: engine.podLabels},
 				Spec: corev1.PodSpec{
 					Affinity: engine.affinity,
 					SecurityContext: &corev1.PodSecurityContext{

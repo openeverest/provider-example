@@ -3,9 +3,9 @@
 spec:
   componentTypes:
     memcached:
+      defaultVersion: 1.6.38
       versions:
-        - default: true
-          image: memcached:1.6.38-alpine
+        - image: memcached:1.6.38-alpine
           version: 1.6.38
         - image: memcached:1.6.31-alpine
           version: 1.6.31
@@ -22,6 +22,9 @@ spec:
               type: integer
           type: object
       type: memcached
+  defaultVersion: 1.6.38
+  release:
+    version: 0.1.0
   topologies:
     pool:
       components:
@@ -72,6 +75,7 @@ spec:
                     disabled: true
                 optionsPath: spec.versions
                 optionsPathConfig:
+                  defaultValuePath: spec.defaultVersion
                   labelPath: name
                   valuePath: name
               path: spec.version
@@ -141,7 +145,6 @@ spec:
   versions:
     - components:
         engine: 1.6.38
-      default: true
       name: 1.6.38
     - components:
         engine: 1.6.31

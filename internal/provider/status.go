@@ -13,12 +13,6 @@ import (
 	"github.com/openeverest/provider-example/internal/common"
 )
 
-// Component states reported alongside the Instance phase.
-const (
-	componentStateReady      = "Ready"
-	componentStateInProgress = "InProgress"
-)
-
 // status reports what the workload actually looks like.
 //
 // Sync says what should exist; this says what does. The runtime writes the
@@ -59,17 +53,6 @@ func statusFromStatefulSet(statefulSet *appsv1.StatefulSet, details controller.C
 	default:
 		status = controller.ReadyWithConnectionDetails(details)
 	}
-
-	state := componentStateInProgress
-	if ready == desired {
-		state = componentStateReady
-	}
-	status.Components = []controller.ComponentStatus{{
-		Name:  common.ComponentEngine,
-		Ready: ready,
-		Total: desired,
-		State: state,
-	}}
 
 	return status
 }
