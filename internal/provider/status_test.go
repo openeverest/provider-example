@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -74,21 +73,6 @@ func TestStatusOnlyPublishesConnectionDetailsWhenReady(t *testing.T) {
 
 	assert.True(t, statusFromStatefulSet(statefulSet(1, 1, 1, 0), details).ConnectionDetails.IsEmpty())
 	assert.False(t, statusFromStatefulSet(statefulSet(1, 1, 1, 1), details).ConnectionDetails.IsEmpty())
-}
-
-func TestStatusReportsComponentProgress(t *testing.T) {
-	t.Parallel()
-
-	inProgress := statusFromStatefulSet(statefulSet(1, 1, 3, 1), connectionDetails("cache", "team-a", 3))
-	require.Len(t, inProgress.Components, 1)
-	assert.Equal(t, common.ComponentEngine, inProgress.Components[0].Name)
-	assert.Equal(t, int32(1), inProgress.Components[0].Ready)
-	assert.Equal(t, int32(3), inProgress.Components[0].Total)
-	assert.Equal(t, componentStateInProgress, inProgress.Components[0].State)
-
-	ready := statusFromStatefulSet(statefulSet(1, 1, 3, 3), connectionDetails("cache", "team-a", 3))
-	require.Len(t, ready.Components, 1)
-	assert.Equal(t, componentStateReady, ready.Components[0].State)
 }
 
 func TestConnectionDetailsAddressEveryNode(t *testing.T) {

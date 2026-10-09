@@ -14,6 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
@@ -33,10 +34,13 @@ func newTestContext(t *testing.T, instance *corev1alpha1.Instance) *controller.C
 		ObjectMeta: metav1.ObjectMeta{Name: common.ProviderName},
 		Spec: corev1alpha1.ProviderSpec{
 			ComponentTypes: map[string]corev1alpha1.ComponentType{
-				common.ComponentTypeMemcached: {Versions: []corev1alpha1.ComponentVersion{
-					{Version: "1.6.38", Image: "memcached:1.6.38-alpine", Default: true},
-					{Version: "1.6.31", Image: "memcached:1.6.31-alpine"},
-				}},
+				common.ComponentTypeMemcached: {
+					DefaultVersion: "1.6.38",
+					Versions: []corev1alpha1.ComponentVersion{
+						{Version: "1.6.38", Image: "memcached:1.6.38-alpine"},
+						{Version: "1.6.31", Image: "memcached:1.6.31-alpine"},
+					},
+				},
 			},
 			Components: map[string]corev1alpha1.Component{
 				common.ComponentEngine: {Type: common.ComponentTypeMemcached},
@@ -176,7 +180,9 @@ func TestBuildStatefulSet(t *testing.T) {
 		Resources: &corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2")},
 		},
-		Affinity: &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{}},
+		SchedulingPolicy: &commonv1alpha1.SchedulingPolicy{
+			Affinity: &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{}},
+		},
 	}
 
 	engine, err := resolveEngine(newTestContext(t, testInstance(common.TopologyPool, component)))
@@ -190,8 +196,9 @@ func TestBuildStatefulSet(t *testing.T) {
 	assert.Equal(t, "cache", statefulSet.Spec.ServiceName)
 	assert.Equal(t, ptr.To(int32(4)), statefulSet.Spec.Replicas)
 	assert.Equal(t, engine.labels, statefulSet.Spec.Selector.MatchLabels)
-	assert.Equal(t, engine.labels, statefulSet.Spec.Template.Labels)
-	assert.Equal(t, component.Affinity, statefulSet.Spec.Template.Spec.Affinity)
+	// Template labels are the selector labels plus the runtime's counting labels.
+	assert.Equal(t, engine.podLabels, statefulSet.Spec.Template.Labels)
+	assert.Equal(t, component.SchedulingPolicy.Affinity, statefulSet.Spec.Template.Spec.Affinity)
 	// memcached is in-memory only: no volumes to claim.
 	assert.Empty(t, statefulSet.Spec.VolumeClaimTemplates)
 
