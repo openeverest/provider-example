@@ -144,15 +144,6 @@ func resolveImage(c *controller.Context, component corev1alpha1.ComponentSpec) (
 	return image, nil
 }
 
-// topologyType returns the requested topology, defaulting to the only one this
-// provider offers.
-func topologyType(instance *corev1alpha1.Instance) string {
-	if instance.Spec.Topology == nil || instance.Spec.Topology.Type == "" {
-		return common.TopologyPool
-	}
-	return instance.Spec.Topology.Type
-}
-
 // resolveReplicas defaults the node count. The `defaults` block in
 // topology.yaml is a documentation and UI hint — nothing defaults component
 // fields at runtime.

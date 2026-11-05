@@ -9,7 +9,7 @@
 // The four methods below are the whole contract. Each delegates to its own
 // file so the lifecycle stays readable:
 //
-//	Validate → validate.go  reject bad specs before they are persisted
+//	Validate → validate.go  reject specs this provider cannot serve
 //	Sync     → sync.go      make the cluster match the spec
 //	Status   → status.go    report what the cluster actually looks like
 //	Cleanup  → this file    tear down anything not garbage collected
@@ -52,11 +52,11 @@ func New() *Provider {
 	}
 }
 
-// Validate rejects Instance specs this provider cannot serve. The API server
-// calls it before persisting an Instance; the reconciler calls it again on
-// every reconcile, which is what catches specs applied straight to Kubernetes.
-func (p *Provider) Validate(c *controller.Context) error {
-	return validate(c)
+// Validate rejects Instance specs this provider cannot serve. The runtime calls
+// it before every Sync and reports its errors on the Instance's Ready
+// condition. It gets no Context, so it cannot read the cluster.
+func (p *Provider) Validate(in controller.ValidationInput) controller.ValidationResult {
+	return validate(in)
 }
 
 // Sync makes the cluster match the Instance spec. It runs on every

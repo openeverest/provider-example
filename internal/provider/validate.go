@@ -1,7 +1,10 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
@@ -18,44 +21,40 @@ const (
 	maxThreadCount     = 64
 )
 
-// validate rejects Instance specs this provider cannot serve.
+// validate checks what only this provider knows and reports every error on the
+// field at fault, so the message reads well in a form and in `kubectl describe`.
 //
-// A spec submitted through the API or the UI is rejected before the Instance
-// exists. One applied with kubectl is persisted first and then fails here, so
-// the message has to read well both in a form and in `kubectl describe`.
-// Anything that would reconcile forever instead of failing loudly belongs here.
-func validate(c *controller.Context) error {
-	instance := c.Instance()
-
-	topology := topologyType(instance)
-	if topology != common.TopologyPool {
-		return fmt.Errorf("unknown topology %q: this provider only offers %q", topology, common.TopologyPool)
-	}
-
-	component, ok := instance.Spec.Components[common.ComponentEngine]
+// It reads nothing but its input. By the time it runs, the runtime has checked
+// the Instance against what the Provider CR declares: version bundles,
+// topologies, component names, types and versions, and the parameter schema.
+func validate(in controller.ValidationInput) controller.ValidationResult {
+	enginePath := field.NewPath("spec", "components").Key(common.ComponentEngine)
+	engine, ok := in.Instance.Spec.Components[common.ComponentEngine]
 	if !ok {
-		return fmt.Errorf("component %q is required", common.ComponentEngine)
+		// The runtime requires the topology's components only when spec.topology.type is set.
+		return controller.ValidationResult{Errors: field.ErrorList{field.Required(enginePath, "")}}
 	}
 
-	if component.Replicas != nil {
-		replicas := *component.Replicas
-		switch {
-		case replicas < 1:
-			return fmt.Errorf("component %q needs at least 1 node, got %d", common.ComponentEngine, replicas)
-		case replicas > maxPoolNodes:
-			return fmt.Errorf("a pool supports at most %d nodes, got %d", maxPoolNodes, replicas)
+	errs := outOfRange(enginePath.Child("replicas"), engine.Replicas, maxPoolNodes)
+
+	if engine.Parameters != nil && engine.Parameters.Raw != nil {
+		parametersPath := enginePath.Child("parameters")
+		var params components.MemcachedParameters
+		if err := json.Unmarshal(engine.Parameters.Raw, &params); err != nil {
+			errs = append(errs, field.Invalid(parametersPath, field.OmitValueType{}, err.Error()))
+		} else {
+			errs = append(errs, outOfRange(parametersPath.Child("maxConnections"), params.MaxConnections, maxConnectionCount)...)
+			errs = append(errs, outOfRange(parametersPath.Child("threads"), params.Threads, maxThreadCount)...)
 		}
 	}
 
-	var params components.MemcachedParameters
-	if c.TryDecodeComponentParameters(component, &params) {
-		if params.MaxConnections != nil && (*params.MaxConnections < 1 || *params.MaxConnections > maxConnectionCount) {
-			return fmt.Errorf("maxConnections must be between 1 and %d, got %d", maxConnectionCount, *params.MaxConnections)
-		}
-		if params.Threads != nil && (*params.Threads < 1 || *params.Threads > maxThreadCount) {
-			return fmt.Errorf("threads must be between 1 and %d, got %d", maxThreadCount, *params.Threads)
-		}
-	}
+	return controller.ValidationResult{Errors: errs}
+}
 
-	return nil
+// outOfRange reports value unless it is unset or between 1 and limit.
+func outOfRange(path *field.Path, value *int32, limit int32) field.ErrorList {
+	if value == nil || (*value >= 1 && *value <= limit) {
+		return nil
+	}
+	return field.ErrorList{field.Invalid(path, *value, fmt.Sprintf("must be between 1 and %d", limit))}
 }
