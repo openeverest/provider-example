@@ -22,6 +22,7 @@ test/
       chainsaw-test.yaml       # Test definition: ordered steps
       00-assert.yaml           # Step files, prefixed by execution order
       ...
+      admission/               # Admission webhook suite, also run by `make test-integration-core`
 ```
 
 Each suite is a directory containing one `chainsaw-test.yaml` plus the

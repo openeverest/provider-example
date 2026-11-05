@@ -52,9 +52,10 @@ func New() *Provider {
 	}
 }
 
-// Validate rejects Instance specs this provider cannot serve. The runtime calls
-// it before every Sync and reports its errors on the Instance's Ready
-// condition. It gets no Context, so it cannot read the cluster.
+// Validate rejects Instance specs this provider cannot serve. The admission
+// webhook calls it when an Instance is written, and the runtime again before
+// every Sync, reporting its errors on the Instance's Ready condition. It gets
+// no Context, so it cannot read the cluster.
 func (p *Provider) Validate(in controller.ValidationInput) controller.ValidationResult {
 	return validate(in)
 }
