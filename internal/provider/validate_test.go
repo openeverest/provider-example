@@ -4,79 +4,126 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller/validationtest"
 
 	"github.com/openeverest/provider-example/internal/common"
 )
 
-func TestValidateAcceptsSupportedSpecs(t *testing.T) {
-	t.Parallel()
+const (
+	providerSpecPath = "../../charts/provider-example/generated/provider-spec.yaml"
+	poolFixture      = "testdata/validate/pool.yaml"
+)
 
-	tests := map[string]*corev1alpha1.Instance{
-		"defaults":           testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{}),
-		"a single node":      testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{Replicas: ptr.To(int32(1))}),
-		"several nodes":      testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{Replicas: ptr.To(int32(5))}),
-		"no topology at all": testInstance("", corev1alpha1.ComponentSpec{}),
-	}
-
-	for name, instance := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			require.NoError(t, validate(newTestContext(t, instance)))
-		})
+// withEngine applies mutate to the engine component of the Instance.
+func withEngine(mutate func(*corev1alpha1.ComponentSpec)) func(*corev1alpha1.Instance) {
+	return func(in *corev1alpha1.Instance) {
+		c := in.Spec.Components[common.ComponentEngine]
+		mutate(&c)
+		in.Spec.Components[common.ComponentEngine] = c
 	}
 }
 
-func TestValidateRejectsUnsupportedSpecs(t *testing.T) {
-	t.Parallel()
+func parameters(raw string) *runtime.RawExtension {
+	return &runtime.RawExtension{Raw: []byte(raw)}
+}
 
-	tests := map[string]struct {
-		instance    *corev1alpha1.Instance
-		wantMessage string
+// TestValidate runs the checks the runtime runs before every Sync: the
+// schemas and catalog the provider publishes, then Validate.
+func TestValidate(t *testing.T) {
+	t.Parallel()
+	v := validationtest.New(t, New(), providerSpecPath)
+
+	tests := []struct {
+		name   string
+		mutate func(*corev1alpha1.Instance)
+		want   []string
 	}{
-		"unknown topology": {
-			instance:    testInstance("sharded", corev1alpha1.ComponentSpec{}),
-			wantMessage: `unknown topology "sharded"`,
-		},
-		"missing engine component": {
-			instance: &corev1alpha1.Instance{
-				Spec: corev1alpha1.InstanceSpec{Topology: &corev1alpha1.TopologySpec{Type: common.TopologyPool}},
+		{name: "valid pool"},
+		{
+			name: "smallest Instance",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Version = ""
+				in.Spec.Topology = nil
+				in.Spec.Components[common.ComponentEngine] = corev1alpha1.ComponentSpec{}
 			},
-			wantMessage: `component "engine" is required`,
 		},
-		"zero nodes": {
-			instance:    testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{Replicas: ptr.To(int32(0))}),
-			wantMessage: "needs at least 1 node",
+		{
+			name:   "largest pool",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) { c.Replicas = ptr.To(int32(maxPoolNodes)) }),
 		},
-		"more nodes than supported": {
-			instance:    testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{Replicas: ptr.To(int32(20))}),
-			wantMessage: "a pool supports at most 9 nodes",
+		{
+			name:   "unknown version",
+			mutate: func(in *corev1alpha1.Instance) { in.Spec.Version = "1.4.0" },
+			want:   []string{"spec.version"},
 		},
-		"connection limit out of range": {
-			instance: testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{
-				Parameters: &runtime.RawExtension{Raw: []byte(`{"maxConnections":70000}`)},
+		{
+			name:   "unknown topology",
+			mutate: func(in *corev1alpha1.Instance) { in.Spec.Topology.Type = "sharded" },
+			want:   []string{"spec.topology.type"},
+		},
+		{
+			name:   "engine type other than memcached",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) { c.Type = "redis" }),
+			want:   []string{"spec.components[engine].type"},
+		},
+		{
+			name: "missing engine without a topology type",
+			mutate: func(in *corev1alpha1.Instance) {
+				in.Spec.Topology = nil
+				delete(in.Spec.Components, common.ComponentEngine)
+			},
+			want: []string{"spec.components[engine]"},
+		},
+		{
+			name:   "zero nodes",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) { c.Replicas = ptr.To(int32(0)) }),
+			want:   []string{"spec.components[engine].replicas"},
+		},
+		{
+			name:   "more nodes than a pool supports",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) { c.Replicas = ptr.To(int32(20)) }),
+			want:   []string{"spec.components[engine].replicas"},
+		},
+		{
+			name: "connection limit out of range",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) {
+				c.Parameters = parameters(`{"maxConnections":70000}`)
 			}),
-			wantMessage: "maxConnections must be between 1 and 65535",
+			want: []string{"spec.components[engine].parameters.maxConnections"},
 		},
-		"thread count out of range": {
-			instance: testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{
-				Parameters: &runtime.RawExtension{Raw: []byte(`{"threads":0}`)},
+		{
+			name: "every rule broken at once",
+			mutate: withEngine(func(c *corev1alpha1.ComponentSpec) {
+				c.Replicas = ptr.To(int32(0))
+				c.Parameters = parameters(`{"maxConnections":0,"threads":65}`)
 			}),
-			wantMessage: "threads must be between 1 and 64",
+			want: []string{
+				"spec.components[engine].replicas",
+				"spec.components[engine].parameters.maxConnections",
+				"spec.components[engine].parameters.threads",
+			},
 		},
 	}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			in := validationtest.Load(t, poolFixture)
+			if tt.mutate != nil {
+				tt.mutate(in)
+			}
 
-			err := validate(newTestContext(t, test.instance))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), test.wantMessage)
+			res := v.Run(in, nil)
+
+			var got []string
+			for _, err := range res.Errors {
+				got = append(got, err.Field)
+			}
+			assert.Equal(t, tt.want, got, "errors: %v", res.Errors)
 		})
 	}
 }

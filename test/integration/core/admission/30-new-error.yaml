@@ -1,0 +1,19 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-example-admission
+spec:
+  providerRef:
+    name: example
+  version: "1.6.38"
+  topology:
+    type: pool
+  components:
+    engine:
+      replicas: 20
+      resources:
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      parameters:
+        threads: 0
