@@ -13,4 +13,10 @@ kind: Instance
 metadata:
   name: cache
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  # The desired count describes the generation the status was written for,
+  # so 3 shows that Ready is about the scaled-out spec, not left over from
+  # before it.
+  (components[?name == 'engine'] | [0].desiredReplicas): 3
+  (components[?name == 'engine'] | [0].readyReplicas): 3

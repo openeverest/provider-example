@@ -7,11 +7,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
@@ -23,12 +25,14 @@ import (
 
 // newTestContext builds a Context backed by a fake client that serves the
 // Provider CR this repository ships, mirroring what `make generate` produces
-// from definition/versions.yaml.
-func newTestContext(t *testing.T, instance *corev1alpha1.Instance) *controller.Context {
+// from definition/versions.yaml, plus any objects a test adds.
+func newTestContext(t *testing.T, instance *corev1alpha1.Instance, objects ...client.Object) *controller.Context {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
 	require.NoError(t, corev1alpha1.AddToScheme(scheme))
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
 
 	providerCR := &corev1alpha1.Provider{
 		ObjectMeta: metav1.ObjectMeta{Name: common.ProviderName},
@@ -48,8 +52,8 @@ func newTestContext(t *testing.T, instance *corev1alpha1.Instance) *controller.C
 		},
 	}
 
-	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(providerCR).Build()
-	return controller.NewContext(context.Background(), client, instance, common.ProviderName)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(providerCR).WithObjects(objects...).Build()
+	return controller.NewContext(context.Background(), fakeClient, instance, common.ProviderName)
 }
 
 // testInstance builds a minimal Instance that individual tests then adjust.
