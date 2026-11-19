@@ -25,7 +25,7 @@ flowchart LR
     U([User / API / UI]) -->|creates| I["Instance<br/>core.openeverest.io"]
     I --> P["provider-example<br/>(this repository)"]
     P -->|creates| R[("StatefulSet<br/>headless Service")]
-    P -->|phase, connection details| I
+    P -->|status facts, connection details| I
 ```
 
 memcached earns its place here: it is a real server you can talk to, it starts in under a
@@ -47,7 +47,7 @@ replication machinery.
 | Topology structure and the UI form schema | [definition/topologies/pool/topology.yaml](definition/topologies/pool/topology.yaml) |
 | Rejecting bad specs at admission time | [internal/provider/validate.go](internal/provider/validate.go), [charts/provider-example/templates/admission.yaml](charts/provider-example/templates/admission.yaml) |
 | Turning a spec into Kubernetes objects | [internal/provider/sync.go](internal/provider/sync.go) |
-| Mapping workload state onto Instance phases | [internal/provider/status.go](internal/provider/status.go) |
+| Reporting status as facts: converged, available, problems, desired pods | [internal/provider/status.go](internal/provider/status.go), [Status](#status) below |
 | Why `Cleanup` is empty | [internal/provider/provider.go](internal/provider/provider.go) |
 | RBAC markers → generated `ClusterRole` | [internal/provider/rbac.go](internal/provider/rbac.go) |
 | An end-to-end lifecycle test | [test/integration/core/](test/integration/core/) |
@@ -63,7 +63,9 @@ kubectl apply -f examples/instance-simple.yaml
 kubectl get instance cache -w
 ```
 
-The Instance walks `Provisioning` → `Initializing` → `Ready`. Once it is ready:
+The `AVAILABLE` column turns `True` as soon as one memcached node serves, and `STATUS` reads
+`Ready` once every node does. Until then, `kubectl get instance cache -o wide` shows what the
+provider is waiting for. Once it is ready:
 
 ```bash
 kubectl get secret cache-conn -o jsonpath='{.data.uri}' | base64 -d
@@ -95,6 +97,43 @@ created.
 
 [dev/README.md](dev/README.md) covers running against an existing cluster and every
 `dev/.env` setting.
+
+## Status
+
+`Status()` does not pick a phase. It reports facts about the workload, and provider-runtime
+derives the `Instance`'s phase (`Pending`, `Provisioned`, `Terminating`) and its conditions from
+them, the same way for every provider.
+[internal/provider/status.go](internal/provider/status.go) reports:
+
+| Fact | Shows up as | Derived from |
+|---|---|---|
+| Converged | `Ready` condition | The StatefulSet controller has seen the latest spec (`observedGeneration`), every pod runs it (`updatedReplicas`), and every node the spec asks for is ready (`readyReplicas`), with no extra node left. Until then, the message says which of these it waits for. |
+| Available | `Available` condition | At least one node passes its readiness probe. Nodes are independent, so the cache keeps serving through a rolling restart or a scale-out. With no node ready it is `False`, reason `NoNodeReady`. |
+| Problems | `EngineHealthy` condition, and the status word | `OOMKilled` while a node is down because the kernel killed memcached for exceeding its memory limit: raise the engine's memory limit or lower `maxConnections`. |
+| Connection details | the `<name>-conn` Secret | Published as soon as a node is ready, not only once the pool has converged. |
+| Desired replicas | `status.components[].desiredReplicas` | The engine's `replicas` from the `Instance`, defaulting to 1 as Sync does, not from the StatefulSet. |
+
+The runtime adds what it observes itself — pods that crash, cannot pull their image or cannot
+be scheduled, a Sync that fails, and the deadlines after which a wait reads as stalled — so a
+provider reports only what it alone knows.
+
+The StatefulSet is read from the API server, not from the informer cache: right after Sync
+applies a new spec, the cached copy can still be the previous one, fully rolled out, and the
+`Instance` would read as `Ready` on a change nothing has acted on yet. Pods are read the same
+way, and only while a node is down, so the provider does not cache every pod in the cluster.
+
+Limits:
+
+- **Available means one node answers.** A client that keeps sending keys to a node that is
+  down fails those keys until it is back, while the `Instance` reads available.
+- **`OOMKilled` is reported only while the node is down.** One that is killed and back before
+  the provider looks is not named; the runtime still counts its restarts.
+- **No operations.** There are no backups to restore and no volumes to resize, and a version
+  change is a rolling restart the `Ready` message already describes, so nothing is reported as
+  `Restoring`, `StorageResizing` or `Upgrading`.
+- **No terminal problems.** Sync applies every field it sets on every pass, so nothing outside
+  OpenEverest can hold the pool in a state the provider cannot undo.
+- **During a scale-out the connection details list the new nodes** before they are ready.
 
 ## Learn it
 
@@ -158,8 +197,9 @@ kubectl logs -n provider-system deploy/provider-example -f
 |---|---|
 | `Instance` ignored entirely | `spec.providerRef.name` must be `example` |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
-| `Instance` stuck in `Provisioning` | `kubectl describe instance <name>`, then the provider logs |
-| `Instance` stuck in `Initializing` | `kubectl describe pod cache-0` — usually image pull or scheduling |
+| `Instance` never `Ready` | `kubectl get instance <name> -o wide` says what it waits for; `kubectl describe instance <name>` shows every condition, then the provider logs |
+| `Available` stays `False` (`NoNodeReady`) | The `PodsScheduled` and `PodsReady` conditions name scheduling and image pull problems; then `kubectl describe pod cache-0` |
+| Status `OOMKilled` | memcached ran out of memory: raise the engine's `resources.limits.memory` or lower `maxConnections` |
 
 ## Contributing
 
