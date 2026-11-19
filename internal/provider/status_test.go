@@ -8,8 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
-
 	"github.com/openeverest/provider-example/internal/common"
 )
 
@@ -28,27 +26,24 @@ func TestStatusFromStatefulSet(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		statefulSet *appsv1.StatefulSet
-		wantPhase   corev1alpha1.InstancePhase
-		wantMessage string
+		statefulSet   *appsv1.StatefulSet
+		wantConverged bool
+		wantMessage   string
 	}{
 		"spec change not yet observed is an update in flight": {
 			statefulSet: statefulSet(4, 3, 3, 3),
-			wantPhase:   corev1alpha1.InstancePhaseUpdating,
 			wantMessage: "Rolling out the updated configuration",
 		},
 		"no ready node yet is still initializing": {
 			statefulSet: statefulSet(1, 1, 3, 0),
-			wantPhase:   corev1alpha1.InstancePhaseInitializing,
 		},
 		"partially ready is an update in flight": {
 			statefulSet: statefulSet(1, 1, 3, 2),
-			wantPhase:   corev1alpha1.InstancePhaseUpdating,
 			wantMessage: "2 of 3 nodes ready",
 		},
 		"every node ready is ready": {
-			statefulSet: statefulSet(1, 1, 3, 3),
-			wantPhase:   corev1alpha1.InstancePhaseReady,
+			statefulSet:   statefulSet(1, 1, 3, 3),
+			wantConverged: true,
 		},
 	}
 
@@ -58,7 +53,7 @@ func TestStatusFromStatefulSet(t *testing.T) {
 
 			status := statusFromStatefulSet(test.statefulSet, connectionDetails("cache", "team-a", 3))
 
-			assert.Equal(t, test.wantPhase, status.Phase)
+			assert.Equal(t, test.wantConverged, status.Converged)
 			if test.wantMessage != "" {
 				assert.Equal(t, test.wantMessage, status.Message)
 			}
