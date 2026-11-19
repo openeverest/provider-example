@@ -1,8 +1,13 @@
-# Every node passes its readiness probe, so Status() reports Ready and the
-# runtime publishes the connection Secret.
+# Every node passes its readiness probe, so Status() reports the pool
+# converged and available, and the runtime makes the Instance Ready and
+# publishes the connection Secret.
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
   name: cache
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (conditions[?type == 'Available'].status | [0]): "True"
+  connectionSecretRef:
+    name: cache-conn

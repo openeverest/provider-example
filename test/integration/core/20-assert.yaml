@@ -13,4 +13,5 @@ kind: Instance
 metadata:
   name: cache
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
