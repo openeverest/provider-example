@@ -9,5 +9,7 @@ status:
   phase: Provisioned
   (conditions[?type == 'Ready'].status | [0]): "True"
   (conditions[?type == 'Available'].status | [0]): "True"
+  (components[?name == 'engine'] | [0].readyReplicas): 2
+  (components[?name == 'engine'] | [0].desiredReplicas): 2
   connectionSecretRef:
     name: cache-conn

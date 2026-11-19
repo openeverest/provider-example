@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -227,6 +228,42 @@ func TestStatus(t *testing.T) {
 		assert.Empty(t, got.Problems)
 		assert.False(t, got.ConnectionDetails.IsEmpty())
 	})
+}
+
+func TestStatusReportsDesiredReplicas(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		replicas *int32
+		objects  []client.Object
+		want     int32
+	}{
+		"defaults to a single node, as Sync does": {
+			objects: []client.Object{statefulSet(1, 1, 1)},
+			want:    1,
+		},
+		"the spec's node count, not what the StatefulSet has yet": {
+			replicas: ptr.To(int32(3)),
+			objects:  []client.Object{statefulSet(2, 2, 2)},
+			want:     3,
+		},
+		"also while the StatefulSet is missing": {
+			replicas: ptr.To(int32(3)),
+			want:     3,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			instance := testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{Replicas: test.replicas})
+			got, err := status(newTestContext(t, instance, test.objects...))
+			require.NoError(t, err)
+
+			assert.Equal(t, []controller.ComponentReplicas{{Component: common.ComponentEngine, Desired: test.want}}, got.DesiredReplicas)
+		})
+	}
 }
 
 func TestConnectionDetailsAddressEveryNode(t *testing.T) {

@@ -146,7 +146,8 @@ func resolveImage(c *controller.Context, component corev1alpha1.ComponentSpec) (
 
 // resolveReplicas defaults the node count. The `defaults` block in
 // topology.yaml is a documentation and UI hint — nothing defaults component
-// fields at runtime.
+// fields at runtime. Status reports the same count as the engine's desired
+// replicas, so both go through this one default.
 func resolveReplicas(requested *int32) int32 {
 	if requested != nil {
 		return *requested

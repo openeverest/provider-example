@@ -37,6 +37,11 @@ const (
 // Secret. It also reports on the pods itself, so pods that crash, cannot pull
 // their image or cannot be scheduled need no code here.
 func status(c *controller.Context) (controller.Status, error) {
+	// Desired replicas: how many pods the engine will have once the current
+	// spec has converged, which clients show the ready pods against ("2/3").
+	// It comes from the Instance, through the same default Sync applies, not
+	// from the StatefulSet, so it is the target of the current spec whatever
+	// the workload says. Report it for every component that has pods.
 	desired := resolveReplicas(c.Instance().Spec.Components[common.ComponentEngine].Replicas)
 
 	statefulSet, err := uncachedStatefulSet(c)
@@ -44,7 +49,8 @@ func status(c *controller.Context) (controller.Status, error) {
 		// Sync applies the StatefulSet before Status runs, so it is only
 		// missing when it was deleted since. The next Sync recreates it.
 		return controller.Progressing("Waiting for the memcached StatefulSet to be created").
-			WithUnavailable(reasonNoNodeReady, "No memcached node is running"), nil
+			WithUnavailable(reasonNoNodeReady, "No memcached node is running").
+			WithDesiredReplicas(common.ComponentEngine, desired), nil
 	}
 	if err != nil {
 		return controller.Status{}, err
@@ -67,7 +73,7 @@ func status(c *controller.Context) (controller.Status, error) {
 	if status.Available == controller.Available {
 		status.ConnectionDetails = connectionDetails(c.Name(), c.Namespace(), desired)
 	}
-	return status, nil
+	return status.WithDesiredReplicas(common.ComponentEngine, desired), nil
 }
 
 // observe turns the StatefulSet and its pods into facts. It reads nothing
