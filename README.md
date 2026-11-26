@@ -50,6 +50,7 @@ replication machinery.
 | Reporting status as facts: converged, available, problems, desired pods | [internal/provider/status.go](internal/provider/status.go), [Status](#status) below |
 | Why `Cleanup` is empty | [internal/provider/provider.go](internal/provider/provider.go) |
 | RBAC markers → generated `ClusterRole` | [internal/provider/rbac.go](internal/provider/rbac.go) |
+| Stamping the chart with the OpenEverest it is built for, and the startup gate | [Compatibility with OpenEverest](#compatibility-with-openeverest) below |
 | An end-to-end lifecycle test | [test/integration/core/](test/integration/core/) |
 
 It leaves out backups, persistent storage and credentials, so that what remains is only the
@@ -135,6 +136,56 @@ Limits:
   OpenEverest can hold the pool in a state the provider cannot undo.
 - **During a scale-out the connection details list the new nodes** before they are ready.
 
+## Compatibility with OpenEverest
+
+A provider is built against one OpenEverest: the core version `go.mod` requires. The chart says
+which, and OpenEverest publishes on its CRDs the range of versions it serves, so a build is not
+run on an OpenEverest that cannot serve it unless you say so. You never write the version
+yourself: `make generate` stamps it through provider-sdk, from the core `go.mod` requires, so it
+cannot drift from the code.
+
+- **The stamp.** `Chart.yaml` carries the annotation `openeverest.io/contract-version`. The
+  generated `templates/_openeverest_contract.tpl` defines the helper
+  `openeverest.contract.annotations`, which
+  [templates/provider.yaml](charts/provider-example/templates/provider.yaml) and
+  [templates/presets.yaml](charts/provider-example/templates/presets.yaml) include, so the
+  `Provider` and the presets carry the stamp too. Presets are stamped because they are written
+  for this provider's parameter schemas. Include the helper in any other object OpenEverest
+  interprets that you add to a chart, such as a `BackupStorageClass` or a `MonitoringClass`.
+- **The install check.** With Helm or Flux, the generated
+  `templates/openeverest-compat-check.yaml` reads the range from the `Provider` CRD and fails the
+  render, before anything is applied, when the OpenEverest in the cluster does not serve the
+  stamp. The error names the OpenEverest the provider needs. Argo CD and pre-rendered manifests
+  render without reading the cluster, so the check passes there.
+- **The startup gate.** Whatever applies the chart, provider-runtime checks again before it
+  starts the controllers. A new build that the installed OpenEverest does not support stays
+  running but not ready, with a Warning Event on its `Provider`, and starts by itself once
+  OpenEverest is upgraded. Under the chart's default `RollingUpdate`, the previous build keeps
+  serving meanwhile; that relies on the readiness probe on `/readyz`, as a pod without one
+  counts as ready while it waits. The gate needs two rules that every provider grants itself, as
+  controller-gen does not read the RBAC markers of a dependency: `get` on the
+  `providers.core.openeverest.io` CRD, and `patch` on the status of its own `Provider` (see
+  [internal/provider/rbac.go](internal/provider/rbac.go)). Without them a new build waits with a
+  `forbidden` Event.
+- **Overriding it.** `compatibility.acknowledge.coreVersion` installs and starts the provider
+  anyway, on the OpenEverest release it names and on later ones that keep its contract.
+  `openeverest.annotations` adds annotations to the stamped objects, such as an Argo CD sync
+  wave; a key under `openeverest.io/` fails the render.
+  [values.yaml](charts/provider-example/values.yaml) documents both.
+- **Checking it.** `make verify`, which CI runs, also runs `go tool provider-sdk verify`. It
+  renders the chart and fails when an object OpenEverest interprets lacks the stamp, when the
+  acknowledgement does not reach it, or when the `ClusterRole` lacks the gate's rules. A provider
+  you publish also runs `go tool provider-sdk verify --release` in its release workflow before
+  packaging the chart, as the provider-sdk scaffold's `release.yaml` does. That fails on a
+  development stamp, so no release names an OpenEverest its users cannot install. This
+  repository publishes nothing, so it has no release workflow.
+
+While `go.mod` requires a commit of core `main` whose contract has changed since the last
+release, the stamp is a development value, such as `2.0.0-alpha.1.next`, which no released
+OpenEverest serves: [dev/README.md](dev/README.md) says how to develop against that commit. The
+provider-sdk guide covers the details, in
+[Compatibility with OpenEverest](https://github.com/openeverest/provider-sdk/blob/main/PROVIDER_DEVELOPMENT.md#compatibility-with-openeverest).
+
 ## Learn it
 
 The [tutorial](https://github.com/openeverest/provider-sdk/blob/main/TUTORIAL.md) builds this
@@ -165,10 +216,10 @@ Source of truth: [definition/versions.yaml](definition/versions.yaml).
 ## Development
 
 ```bash
-make generate           # RBAC, provider spec, Helm chart sync
+make generate           # RBAC, provider spec, Helm chart sync, OpenEverest stamp
 make test-unit
 make test-integration   # chainsaw suites; needs a cluster with the provider deployed
-make verify             # fails when generated files are stale
+make verify             # fails when generated files are stale or the chart is not stamped
 ```
 
 `make help` lists every target.
@@ -181,7 +232,7 @@ make verify             # fails when generated files are stale
 | `internal/provider/` | `ProviderInterface` implementation and RBAC markers |
 | `internal/common/` | Names shared between the definition and the code |
 | `cmd/provider/` | Entry point |
-| `charts/provider-example/` | Helm chart (`generated/` is produced by `make generate`) |
+| `charts/provider-example/` | Helm chart (`generated/`, the `Chart.yaml` stamp, `templates/_openeverest_contract.tpl` and `templates/openeverest-compat-check.yaml` are produced by `make generate`) |
 | `config/rbac/role.yaml` | Generated `ClusterRole` — do not edit |
 | `test/integration/` | Chainsaw suites |
 | `examples/` | Example `Instance` resources |
@@ -197,7 +248,7 @@ kubectl logs -n provider-system deploy/provider-example -f
 |---|---|
 | `Instance` ignored entirely | `spec.providerRef.name` must be `example` |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
-| New provider pod running but never `Ready` | It waits until the installed OpenEverest supports this build: the Warning Event in `kubectl describe provider example` says why |
+| New provider pod running but never `Ready` | It waits until the installed OpenEverest supports this build: the Warning Event in `kubectl describe provider example` says why (see [Compatibility with OpenEverest](#compatibility-with-openeverest)) |
 | `Instance` never `Ready` | `kubectl get instance <name> -o wide` says what it waits for; `kubectl describe instance <name>` shows every condition, then the provider logs |
 | `Available` stays `False` (`NoNodeReady`) | The `PodsScheduled` and `PodsReady` conditions name scheduling and image pull problems; then `kubectl describe pod cache-0` |
 | Status `OOMKilled` | memcached ran out of memory: raise the engine's `resources.limits.memory` or lower `maxConnections` |
