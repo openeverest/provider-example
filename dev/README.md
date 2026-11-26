@@ -77,6 +77,12 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 > resolution skips — it would install v1, whose CRDs a v2 provider cannot use. A
 > range such as `>=2.0.0-0 <3.0.0` does not help either: SemVer sorts pre-release
 > labels alphabetically, so `2.0.0-dev.4` ranks above `2.0.0-alpha.1`.
+>
+> While `go.mod` requires a commit of core `main` whose contract has changed since
+> the last release, the chart's stamp is a development value, such as
+> `2.0.0-alpha.1.next`, and no released core serves this provider: the chart
+> refuses to install on one, and the provider would stay unready there. Run the
+> core from that commit instead, as described below.
 
 ## Developing the core and the provider together
 
@@ -84,7 +90,11 @@ When you need to test against a locally built core (not a release), run two
 Tilt instances against the same cluster:
 
 1. In the **openeverest** core repo, start the core dev environment
-   (`make dev-up`). It manages `everest-system` and the core CRDs.
+   (`make dev-up`). It manages `everest-system` and the core CRDs. To develop
+   against the core `go.mod` requires, check that version out first:
+   `go list -m github.com/openeverest/openeverest/v2` prints it, a tag or a
+   pseudo-version that ends in the commit, such as `9e1afcf26f49` in
+   `v2.0.0-dev.2.0.20261126094545-9e1afcf26f49`.
 2. In this repo, start the provider Tilt instance on a different port with the
    core installation disabled:
 

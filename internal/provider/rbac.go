@@ -13,6 +13,18 @@ package provider
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
+// The startup gate. Before it starts the controllers, provider-runtime checks
+// that the installed OpenEverest supports the version this build is stamped
+// with. It reads the versions OpenEverest supports on the Provider CRD and,
+// until they include this build's, keeps the pod running but not ready, with a
+// Warning Event on the Provider. Once the build starts, it records its version
+// on its Provider's status, so a restart of the same build is not checked
+// again. controller-gen does not read the markers of a dependency, so every
+// provider grants these itself; without them a new build waits with a
+// "forbidden" Event. Keep resourceNames in sync with common.ProviderName.
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,resourceNames=providers.core.openeverest.io,verbs=get
+// +kubebuilder:rbac:groups=core.openeverest.io,resources=providers/status,resourceNames=example,verbs=patch
+
 // =============================================================================
 // PROVIDER-SPECIFIC RBAC
 // =============================================================================
