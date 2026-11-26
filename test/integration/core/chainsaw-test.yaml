@@ -2,8 +2,9 @@
 # Lifecycle of an Instance, end to end.
 #
 # Unlike an operator-backed provider, nothing here is simulated: memcached
-# really starts, the readiness probe really passes, and the Instance really
-# reaches Ready. That is the upside of a provider that owns its workload.
+# really starts, the readiness probe really passes, and the Instance's Ready
+# condition really turns True. That is the upside of a provider that owns its
+# workload.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -46,7 +47,7 @@ spec:
             file: 11-assert.yaml
 
     - name: scale-out
-      description: Adding nodes takes the Instance through Updating and back to Ready.
+      description: The Instance reconciles while the new node starts, then is Ready again.
       try:
         - apply:
             file: 20-scale-out.yaml

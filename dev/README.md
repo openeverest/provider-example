@@ -1,7 +1,8 @@
 # Provider development with Tilt
 
 This directory contains a [Tilt](https://tilt.dev/) setup for developing
-`provider-example`. It installs the latest released OpenEverest v2 core and
+`provider-example`. It installs the released OpenEverest v2 core that `go.mod`
+requires and
 then builds and deploys this provider, with live-reload on every code change.
 
 You do **not** need a local checkout of the OpenEverest core.
@@ -65,15 +66,17 @@ All settings live in `dev/.env` (see `dev/.env.example`). Common options:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `INSTALL_OPENEVEREST` | `true` | Install the released OpenEverest core. |
-| `OPENEVEREST_VERSION` | `>=2.0.0-0 <3.0.0` | Pin a specific core chart version. |
+| `OPENEVEREST_VERSION` | `2.0.0-alpha.1` | Core chart version to install. |
 | `PROVIDER_NAMESPACE` | `default` | Namespace for the provider + operator. |
 | `K8S_CONTEXT` | _(unset)_ | Restrict Tilt to a specific Kubernetes context. |
 | `DOCKER_REGISTRY_URL` | _(unset)_ | Push images here instead of the cluster's local registry. |
 
-> **Note:** v2 currently ships only as pre-releases (e.g. `2.0.0-dev.2`), which
-> Helm's default "latest" resolution skips — it would install v1, whose CRDs a v2
-> provider cannot use. `OPENEVEREST_VERSION` therefore defaults to a constraint
-> rather than being empty. Override it to pin an exact version.
+> **Note:** `OPENEVEREST_VERSION` defaults to the core release `go.mod` requires,
+> whose CRDs and controller the provider is built against; move it together with
+> that version. v2 ships only as pre-releases, which Helm's default "latest"
+> resolution skips — it would install v1, whose CRDs a v2 provider cannot use. A
+> range such as `>=2.0.0-0 <3.0.0` does not help either: SemVer sorts pre-release
+> labels alphabetically, so `2.0.0-dev.4` ranks above `2.0.0-alpha.1`.
 
 ## Developing the core and the provider together
 

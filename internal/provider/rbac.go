@@ -28,6 +28,6 @@ package provider
 // Secrets are not optional, even though this provider never touches one: the
 // runtime writes the connection details returned by Status() into a Secret
 // through the manager's cached client. Without this the Secret informer never
-// syncs, and every reconcile that reports Ready fails before it can publish
-// the phase.
+// syncs, and every reconcile that reports connection details fails before it
+// can write the Instance's status.
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete

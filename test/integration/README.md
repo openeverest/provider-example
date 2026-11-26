@@ -39,10 +39,16 @@ directories (e.g. `backup/`, `monitoring/`) and wire each one to its own
   scaled to 0 (see `deploy-provider-ci` in the Makefile). Tests then patch the
   operator-native CR status (`kubectl patch --subresource status`) to simulate
   readiness. This keeps suites fast and deterministic: you are testing the
-  *provider's* translation and status logic, not the operator itself.
+  *provider's* translation and status logic, not the operator itself. If
+  your `Status()` checks the operator's `observedGeneration`, patch it to the
+  CR's `metadata.generation` after every spec change, or the `Instance` never
+  reads as converged again.
 - **Assert both directions** — after applying an `Instance`, assert the
   operator-native CR spec the provider must produce; after patching the
-  operator CR status, assert the `Instance` reaches `phase: Running`.
+  operator CR status, assert the `Instance` reaches `phase: Provisioned` and
+  its `Ready` condition turns `"True"`. Write that as
+  `(conditions[?type == 'Ready'].status | [0]): "True"`: the phase only says
+  whether the `Instance` has ever been available, not whether it is ready now.
 - **Collect diagnostics on failure** — use the `catch` block in
   `chainsaw-test.yaml` to dump relevant resources and provider logs.
 

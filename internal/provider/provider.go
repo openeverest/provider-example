@@ -66,7 +66,9 @@ func (p *Provider) Sync(c *controller.Context) error {
 	return sync(c)
 }
 
-// Status reports the observed state of the workload back to the Instance.
+// Status reports facts about the workload: whether it runs the current spec,
+// whether clients can connect, and what is wrong. The runtime derives the
+// Instance's phase and conditions from them.
 func (p *Provider) Status(c *controller.Context) (controller.Status, error) {
 	return status(c)
 }
