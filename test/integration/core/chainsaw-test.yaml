@@ -33,6 +33,9 @@ spec:
     - name: create-instance
       description: The provider translates the Instance into a StatefulSet and a headless Service.
       try:
+        # Pods must pass the restricted Pod Security Standard, as on OpenShift.
+        - script:
+            content: kubectl label namespace $NAMESPACE pod-security.kubernetes.io/enforce=restricted --overwrite
         - apply:
             file: 10-create-instance.yaml
         - assert:

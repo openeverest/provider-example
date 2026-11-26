@@ -171,8 +171,9 @@ install-crds: ## Install OpenEverest CRDs (and your operator's CRDs) into the cl
 
 .PHONY: deploy-provider-ci
 deploy-provider-ci: helm-deps ## Deploy the provider via Helm for CI (IMG must already be imported into k3d).
+	kubectl create namespace provider-system --dry-run=client -o yaml | kubectl apply -f -
+	kubectl label namespace provider-system pod-security.kubernetes.io/enforce=restricted --overwrite
 	helm upgrade --install provider-example $(CHART_DIR) \
-		--create-namespace \
 		--namespace provider-system \
 		--set image.repository=$(_IMG_REPO) \
 		--set image.tag=$(_IMG_TAG) \
