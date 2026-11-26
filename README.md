@@ -197,6 +197,7 @@ kubectl logs -n provider-system deploy/provider-example -f
 |---|---|
 | `Instance` ignored entirely | `spec.providerRef.name` must be `example` |
 | No `Provider` resource in the cluster | Is the chart installed? Check the provider deployment logs |
+| New provider pod running but never `Ready` | It waits until the installed OpenEverest supports this build: the Warning Event in `kubectl describe provider example` says why |
 | `Instance` never `Ready` | `kubectl get instance <name> -o wide` says what it waits for; `kubectl describe instance <name>` shows every condition, then the provider logs |
 | `Available` stays `False` (`NoNodeReady`) | The `PodsScheduled` and `PodsReady` conditions name scheduling and image pull problems; then `kubectl describe pod cache-0` |
 | Status `OOMKilled` | memcached ran out of memory: raise the engine's `resources.limits.memory` or lower `maxConnections` |
