@@ -1,7 +1,8 @@
 # Tiltfile for developing provider-example.
 #
-# Installs the latest released OpenEverest v2 core, then builds and deploys this
-# provider with live-reload. You do NOT need a local checkout of the core.
+# Installs the released OpenEverest v2 core that go.mod requires, then builds
+# and deploys this provider with live-reload. You do NOT need a local checkout
+# of the core.
 #
 # Usage:
 #   make dev-up            # create the k3d cluster and run `tilt up`
@@ -38,12 +39,13 @@ install_openeverest = str2bool(os.getenv('INSTALL_OPENEVEREST', 'true'))
 
 # Released OpenEverest core version to install.
 #
-# Defaults to a constraint rather than "latest", because v2 currently ships
-# only as pre-releases (2.0.0-dev.N) and Helm's default resolution skips those
-# — it would install v1, whose CRDs a v2 provider cannot use. An explicit
-# constraint with a `-0` lower bound matches pre-releases, so this tracks the
-# newest v2 and keeps working once 2.0.0 is generally available.
-openeverest_version = os.getenv('OPENEVEREST_VERSION', '>=2.0.0-0 <3.0.0')
+# Defaults to the release go.mod requires, whose CRDs and controller the
+# provider is built against. Helm's default "latest" skips pre-releases, and
+# v2 ships only as pre-releases, so it would install v1, whose CRDs a v2
+# provider cannot use. A range such as `>=2.0.0-0 <3.0.0` picks the wrong one
+# too: SemVer sorts pre-release labels alphabetically, so 2.0.0-dev.4 ranks
+# above 2.0.0-alpha.1. Move this together with the core version in go.mod.
+openeverest_version = os.getenv('OPENEVEREST_VERSION', '2.0.0-alpha.1')
 
 # Helm repository that hosts the OpenEverest core chart.
 openeverest_helm_repo = os.getenv(
