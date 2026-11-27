@@ -19,7 +19,8 @@ import (
 
 // memcachedUID is the uid the official memcached images run as. It is set
 // explicitly because runAsNonRoot cannot be enforced when an image declares
-// its user by name.
+// its user by name. On OpenShift it is left unset instead: the restricted-v2
+// SCC assigns a UID from the namespace's range and rejects any other.
 const memcachedUID = 11211
 
 // memoryLimitPercent is the share of the container memory limit handed to
@@ -53,6 +54,9 @@ type engineSpec struct {
 	threads        *int32
 
 	affinity *corev1.Affinity
+
+	// openShift leaves the pod's UID and GID to the SCC.
+	openShift bool
 }
 
 // sync makes the cluster match the Instance spec.
@@ -61,11 +65,12 @@ type engineSpec struct {
 // the spec describes and apply them. Context.Apply creates or updates, and
 // sets a controller reference to the Instance, which is what makes Cleanup a
 // no-op and lets the runtime watch these objects as owned.
-func sync(c *controller.Context) error {
+func sync(c *controller.Context, opts Options) error {
 	engine, err := resolveEngine(c)
 	if err != nil {
 		return err
 	}
+	engine.openShift = opts.OpenShift
 
 	// The Service is applied first so pod DNS resolves as soon as pods appear.
 	if err := c.Apply(buildService(engine)); err != nil {
@@ -154,6 +159,20 @@ func resolveReplicas(requested *int32) int32 {
 	return 1
 }
 
+// podSecurityContext satisfies the restricted Pod Security Standard everywhere
+// and OpenShift's restricted-v2 SCC on OpenShift, which owns the pod's IDs.
+func podSecurityContext(engine *engineSpec) *corev1.PodSecurityContext {
+	sc := &corev1.PodSecurityContext{
+		RunAsNonRoot:   ptr.To(true),
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+	if !engine.openShift {
+		sc.RunAsUser = ptr.To(int64(memcachedUID))
+		sc.RunAsGroup = ptr.To(int64(memcachedUID))
+	}
+	return sc
+}
+
 // memcachedMemoryLimitMB converts the container memory limit into memcached's
 // --memory-limit, which is expressed in megabytes.
 func memcachedMemoryLimitMB(resources corev1.ResourceRequirements) int64 {
@@ -227,13 +246,8 @@ func buildStatefulSet(engine *engineSpec) *appsv1.StatefulSet {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: engine.podLabels},
 				Spec: corev1.PodSpec{
-					Affinity: engine.affinity,
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot:   ptr.To(true),
-						RunAsUser:      ptr.To(int64(memcachedUID)),
-						RunAsGroup:     ptr.To(int64(memcachedUID)),
-						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-					},
+					Affinity:        engine.affinity,
+					SecurityContext: podSecurityContext(engine),
 					Containers: []corev1.Container{{
 						Name:      common.ComponentTypeMemcached,
 						Image:     engine.image,

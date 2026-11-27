@@ -49,6 +49,7 @@ replication machinery.
 | Turning a spec into Kubernetes objects | [internal/provider/sync.go](internal/provider/sync.go) |
 | Mapping workload state onto Instance phases | [internal/provider/status.go](internal/provider/status.go) |
 | Why `Cleanup` is empty | [internal/provider/provider.go](internal/provider/provider.go) |
+| Running under the restricted Pod Security Standard and OpenShift's `restricted-v2` SCC | [internal/provider/openshift.go](internal/provider/openshift.go), `podSecurityContext` in [internal/provider/sync.go](internal/provider/sync.go) |
 | RBAC markers → generated `ClusterRole` | [internal/provider/rbac.go](internal/provider/rbac.go) |
 | An end-to-end lifecycle test | [test/integration/core/](test/integration/core/) |
 

@@ -30,11 +30,21 @@ var _ controller.ProviderInterface = (*Provider)(nil)
 // Provider implements controller.ProviderInterface for memcached.
 type Provider struct {
 	controller.BaseProvider
+
+	opts Options
+}
+
+// Options describe the cluster the provider runs on.
+type Options struct {
+	// OpenShift leaves pod UIDs and GIDs to the restricted-v2 SCC, which
+	// rejects fixed IDs outside the namespace's range. See DetectOpenShift.
+	OpenShift bool
 }
 
 // New creates a new Provider.
-func New() *Provider {
+func New(opts Options) *Provider {
 	return &Provider{
+		opts: opts,
 		BaseProvider: controller.BaseProvider{
 			ProviderName: common.ProviderName,
 			// The runtime's scheme already knows the OpenEverest APIs and
@@ -63,7 +73,7 @@ func (p *Provider) Validate(in controller.ValidationInput) controller.Validation
 // Sync makes the cluster match the Instance spec. It runs on every
 // reconciliation and must be idempotent.
 func (p *Provider) Sync(c *controller.Context) error {
-	return sync(c)
+	return sync(c, p.opts)
 }
 
 // Status reports the observed state of the workload back to the Instance.

@@ -35,7 +35,7 @@ func parameters(raw string) *runtime.RawExtension {
 // schemas and catalog the provider publishes, then Validate.
 func TestValidate(t *testing.T) {
 	t.Parallel()
-	v := validationtest.New(t, New(), providerSpecPath)
+	v := validationtest.New(t, New(Options{}), providerSpecPath)
 
 	tests := []struct {
 		name   string

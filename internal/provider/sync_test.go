@@ -220,12 +220,32 @@ func TestBuildStatefulSetHardensThePodSecurityContext(t *testing.T) {
 	require.NotNil(t, podSpec.SecurityContext)
 	assert.Equal(t, ptr.To(true), podSpec.SecurityContext.RunAsNonRoot)
 	assert.Equal(t, ptr.To(int64(memcachedUID)), podSpec.SecurityContext.RunAsUser)
+	assert.Equal(t, ptr.To(int64(memcachedUID)), podSpec.SecurityContext.RunAsGroup)
+	assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, podSpec.SecurityContext.SeccompProfile.Type)
 
 	container := podSpec.Containers[0]
 	require.NotNil(t, container.SecurityContext)
 	assert.Equal(t, ptr.To(false), container.SecurityContext.AllowPrivilegeEscalation)
 	assert.Equal(t, ptr.To(true), container.SecurityContext.ReadOnlyRootFilesystem)
 	assert.Equal(t, []corev1.Capability{"ALL"}, container.SecurityContext.Capabilities.Drop)
+}
+
+// OpenShift's restricted-v2 SCC rejects pods that pin IDs outside the
+// namespace's range, so the SCC must be left to assign them.
+func TestBuildStatefulSetLeavesIDsToOpenShift(t *testing.T) {
+	t.Parallel()
+
+	engine, err := resolveEngine(newTestContext(t, testInstance(common.TopologyPool, corev1alpha1.ComponentSpec{})))
+	require.NoError(t, err)
+	engine.openShift = true
+
+	podSpec := buildStatefulSet(engine).Spec.Template.Spec
+	require.NotNil(t, podSpec.SecurityContext)
+	assert.Equal(t, ptr.To(true), podSpec.SecurityContext.RunAsNonRoot)
+	assert.Nil(t, podSpec.SecurityContext.RunAsUser)
+	assert.Nil(t, podSpec.SecurityContext.RunAsGroup)
+	assert.Nil(t, podSpec.SecurityContext.FSGroup)
+	assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, podSpec.SecurityContext.SeccompProfile.Type)
 }
 
 func TestBuildServiceIsHeadless(t *testing.T) {
